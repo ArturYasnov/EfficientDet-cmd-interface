@@ -1,0 +1,5 @@
+train: ../train/images
+val: ../valid/images
+
+nc: 7
+names: ['black-hat', 'body', 'bodysurface', 'bodyunder', 'swimmer', 'umpire', 'white-hat']
