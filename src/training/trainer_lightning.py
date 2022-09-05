@@ -14,8 +14,11 @@ from src.data_scripts.dataset import get_train_valid_loader
 from src.training.transforms import get_train_transform, get_valid_transform
 from src.utils.config import TRAIN_CFG
 
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 
-def get_effdet_model(num_classes=12, image_size=TRAIN_CFG.img_size, architecture="tf_efficientnetv2_b0"):
+
+def get_effdet_model(num_classes=12, image_size=512, architecture="tf_efficientnetv2_b0"):
     efficientdet_model_param_dict[architecture] = dict(
         name=architecture,
         backbone_name=architecture,
@@ -38,16 +41,22 @@ def get_effdet_model(num_classes=12, image_size=TRAIN_CFG.img_size, architecture
 
 
 class LitAutoEncoder(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, image_size=512, batch_size=16, lr=0.1, num_classes=12, data_train="data/train", data_valid="data/valid"):
         super().__init__()
         self.losses_list_train = []
         self.losses_list_valid = []
         self.acc_list_train = []
         self.acc_list_valid = []
 
-        self.model = get_effdet_model(num_classes=TRAIN_CFG.num_classes)
+        self.model = get_effdet_model(num_classes=num_classes, image_size=image_size)
         self.map = MeanAveragePrecision(box_format="xyxy", class_metrics=True)
         self.id2label = {1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:7, 8:8, 9:9, 10:10, 11:11, 12:12}
+
+        self.image_size=image_size
+        self.batch_size=batch_size
+        self.data_train=data_train
+        self.data_valid=data_valid
+        self.lr=lr
 
 
     def forward(self, x):
@@ -55,7 +64,7 @@ class LitAutoEncoder(pl.LightningModule):
         return boxes
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=TRAIN_CFG.lr, amsgrad=False)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, amsgrad=False)
         if TRAIN_CFG.step:
             scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=TRAIN_CFG.step, gamma=TRAIN_CFG.gamma)
         else:
@@ -168,7 +177,7 @@ class LitAutoEncoder(pl.LightningModule):
 
     def validation_epoch_end(self, outs):
         mAPs = {"val_" + k: v for k, v in self.map.compute().items()}
-        print(mAPs)
+        # print(mAPs)
 
         mAPs_per_class = mAPs.pop("val_map_per_class")
         mARs_per_class = mAPs.pop("val_mar_100_per_class")
@@ -222,16 +231,30 @@ class LitAutoEncoder(pl.LightningModule):
 
     def setup(self, stage=None):
 
-        train_images_paths = glob.glob(f'{TRAIN_CFG.DATA_PATH_TRAIN}/images/*jpg', recursive=False)
+        train_images_paths = glob.glob(f'{self.data_train}/images/*jpg', recursive=False)
         train_images_names = [os.path.basename(x) for x in train_images_paths]
 
-        valid_images_paths = glob.glob(f'{TRAIN_CFG.DATA_PATH_VALID}/images/*jpg', recursive=False)
+        valid_images_paths = glob.glob(f'{self.data_valid}/images/*jpg', recursive=False)
         valid_images_names = [os.path.basename(x) for x in valid_images_paths]
 
-        train_dataset = DatasetEffdet(TRAIN_CFG.DATA_PATH_TRAIN, train_images_names, get_train_transform())
-        valid_dataset = DatasetEffdet(TRAIN_CFG.DATA_PATH_VALID, valid_images_names, get_valid_transform())
+        train_dataset = DatasetEffdet(self.data_train, train_images_names, get_train_transform(img_size=self.image_size))
+        valid_dataset = DatasetEffdet(self.data_valid, valid_images_names, get_valid_transform(img_size=self.image_size))
 
-        train_loader, valid_loader = get_train_valid_loader(train_dataset, valid_dataset, collate_fn=self.collate_fn,)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=4,
+            # pin_memory=True,
+            collate_fn=self.collate_fn)
+
+        valid_loader = DataLoader(
+            valid_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=4,
+            # pin_memory=True,
+            collate_fn=self.collate_fn)
 
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
