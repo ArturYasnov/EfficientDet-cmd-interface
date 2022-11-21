@@ -6,8 +6,8 @@ class CFG:
 
 class TRAIN_CFG:
     # this experiment
-    log_dir = f'{CFG.BASE_PATH}/logs/'
-    exp_name = 'validating map per class'
+    log_dir = f"{CFG.BASE_PATH}/logs/"
+    exp_name = "validating map per class"
     device = "cuda"
 
     # train config
@@ -24,10 +24,10 @@ class TRAIN_CFG:
 
     # scheduler1
     step = [50, 90]
-    step_size=3
-    gamma=0.2
+    step_size = 3
+    gamma = 0.2
 
-    scheduler = 'CosineAnnealingLR'
+    scheduler = "CosineAnnealingLR"
     t_0 = 50  # int(epochs * 1.1) + 5
     t_mul = 2
     validate_map = False
